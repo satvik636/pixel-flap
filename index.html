@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flappy Bird — Retro 2013</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;background:#202b35;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .wrap{position:relative;width:min(100vw,480px);height:min(100vh,720px);display:flex;align-items:center;justify-content:center}
+  canvas{width:100%;height:100%;max-width:480px;max-height:720px;object-fit:contain;image-rendering:pixelated;outline:none;touch-action:manipulation}
+  .hint{position:absolute;bottom:10px;color:#d7e7ee;font-size:12px;text-align:center;text-shadow:1px 1px #000;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<canvas id="game" width="480" height="720" tabindex="0" aria-label="Flappy Bird game. Tap, click, or press Space to flap."></canvas>
+<div class="hint">TAP / CLICK / SPACE TO FLAP</div>
+</div>
+<script>
+(() => {
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+const W=480,H=720, groundH=104, groundY=H-groundH;
+let state='ready', bird, pipes, score, best=0, frame=0, groundOffset=0, pipeClock=0;
+try{best=Number(localStorage.getItem('retroFlappyBest')||0)}catch(e){}
+function reset(){
+  bird={x:138,y:300,vy:0,rot:0,flap:0};
+  pipes=[];score=0;frame=0;groundOffset=0;pipeClock=0;
+  state='ready';
+}
+function flap(){
+  if(state==='over'){reset();state='playing';bird.vy=-7.4;return}
+  if(state==='ready')state='playing';
+  if(state==='playing'){bird.vy=-7.4;bird.flap=8}
+}
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();flap()});
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();if(!e.repeat)flap()}
+  if(e.code==='Enter'&&state!=='playing'){if(state==='over')reset();state='playing'}
+});
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h))}
+function text(t,x,y,size,fill='#fff',stroke='#543b30',line=4){
+  ctx.font=`bold ${size}px Arial`;ctx.textAlign='center';ctx.lineJoin='round';
+  ctx.lineWidth=line;ctx.strokeStyle=stroke;ctx.strokeText(t,x,y);ctx.fillStyle=fill;ctx.fillText(t,x,y);
+}
+function drawCloud(x,y,s=1){
+  rect(x,y+12*s,68*s,18*s,'#fff');rect(x+10*s,y+2*s,22*s,16*s,'#fff');rect(x+30*s,y-5*s,24*s,25*s,'#fff');rect(x+49*s,y+6*s,18*s,14*s,'#fff');
+  rect(x+8*s,y+25*s,51*s,4*s,'#dff5fa');
+}
+function drawBackground(){
+  rect(0,0,W,H,'#70c5ce');
+  // blocky clouds and distant hills
+  drawCloud(42,118,.9);drawCloud(300,188,.72);drawCloud(216,70,.55);
+  rect(0,groundY-48,W,48,'#ded895');
+  rect(0,groundY-40,70,40,'#d4cf86');rect(72,groundY-29,66,29,'#d4cf86');rect(144,groundY-45,88,45,'#d4cf86');
+  rect(245,groundY-34,76,34,'#d4cf86');rect(330,groundY-50,68,50,'#d4cf86');rect(404,groundY-30,76,30,'#d4cf86');
+}
+function drawPipe(p){
+  const x=p.x, gapTop=p.gapY- p.gapH/2, gapBottom=p.gapY+p.gapH/2, bottom=groundY;
+  // upper pipe body and lip
+  rect(x,gapTop, p.w,0,'#000');
+  rect(x+4,0,p.w-8,gapTop,'#73bf2e');rect(x+8,0,8,gapTop,'#b2ec52');rect(x+p.w-13,0,7,gapTop,'#558d25');
+  rect(x-5,gapTop-26,p.w+10,26,'#73bf2e');rect(x+2,gapTop-23,p.w-4,5,'#b2ec52');rect(x-5,gapTop-26,6,26,'#4b8d24');rect(x+p.w+1,gapTop-26,4,26,'#386f21');
+  // lower pipe
+  rect(x+4,gapBottom,p.w-8,bottom-gapBottom,'#73bf2e');rect(x+8,gapBottom,8,bottom-gapBottom,'#b2ec52');rect(x+p.w-13,gapBottom,7,bottom-gapBottom,'#558d25');
+  rect(x-5,gapBottom,p.w+10,26,'#73bf2e');rect(x+2,gapBottom+3,p.w-4,5,'#b2ec52');rect(x-5,gapBottom,6,26,'#4b8d24');rect(x+p.w+1,gapBottom,4,26,'#386f21');
+}
+function drawGround(){
+  rect(0,groundY,W,12,'#ded895');rect(0,groundY,W,5,'#75bf31');
+  for(let x=-(groundOffset%48);x<W;x+=48){
+    rect(x,groundY+12,24,5,'#c5b96a');rect(x+24,groundY+17,24,5,'#c5b96a');
+    rect(x,groundY+25,24,5,'#eee4a5');rect(x+24,groundY+30,24,5,'#eee4a5');
+    rect(x,groundY+38,48,4,'#d4c783');
+  }
+  rect(0,H-8,W,8,'#ded895');
+}
+function drawBird(){
+  const bob=(state==='ready')?Math.sin(frame*.12)*7:0;
+  ctx.save();ctx.translate(bird.x,bird.y+bob);ctx.rotate(bird.rot);
+  // pixel bird body
+  rect(-23,-13,34,25,'#f6d64a');rect(-17,-19,22,9,'#f6d64a');rect(-19,9,21,5,'#d7a82e');
+  rect(-18,-10,25,4,'#fff18b');rect(-13,4,20,4,'#e8b832');
+  // wing animation
+  const wingUp=(bird.flap>0||state==='ready');
+  rect(-15,wingUp?-2:2,17,9,'#e7a52b');rect(-12,wingUp?0:4,10,4,'#f4c34b');
+  // eye and beak
+  rect(3,-14,12,13,'#fff');rect(10,-10,4,5,'#253746');rect(13,-5,11,6,'#f28b36');rect(14,-3,10,2,'#d65d28');
+  ctx.restore();
+}
+function drawUI(){
+  if(state==='playing'){text(String(score),W/2,94,62,'#fff','#543b30',5);return}
+  if(state==='ready'){
+    text('FLAPPY BIRD',W/2,150,38,'#fff','#543b30',5);
+    // little instruction card
+    rect(94,216,292,130,'#f8f0c7');rect(94,216,292,8,'#fff9e6');rect(94,338,292,8,'#d6c98e');
+    text('GET READY!',W/2,258,25,'#f7a928','#70452a',3);
+    text('TAP TO FLAP',W/2,297,21,'#fff','#70452a',3);
+    text('BEST  '+best,W/2,324,17,'#fff','#70452a',3);
+    text('TAP / CLICK / SPACE',W/2,408,19,'#fff','#543b30',3);
+  } else {
+    rect(72,180,336,225,'#f8f0c7');rect(72,180,336,10,'#fff9e6');rect(72,395,336,10,'#d6c98e');
+    text('GAME OVER',W/2,229,36,'#e95a40','#70452a',4);
+    text('SCORE',W/2-72,272,17,'#9a7752','#f8f0c7',1);
+    text('BEST',W/2+82,272,17,'#9a7752','#f8f0c7',1);
+    text(String(score),W/2-72,316,34,'#fff','#70452a',3);
+    text(String(best),W/2+82,316,34,'#fff','#70452a',3);
+    rect(123,342,234,39,'#eebc3e');rect(123,342,234,5,'#ffe77c');rect(123,376,234,5,'#c88b2d');
+    text('PLAY AGAIN',W/2,370,20,'#fff','#70452a',2);
+    text('TAP / CLICK / SPACE',W/2,440,17,'#fff','#543b30',3);
+  }
+}
+function collides(){
+  const bx=bird.x-18, by=bird.y-14, bw=35,bh=27;
+  if(by<0||by+bh>=groundY)return true;
+  for(const p of pipes){
+    const gapTop=p.gapY-p.gapH/2,gapBottom=p.gapY+p.gapH/2;
+    if(bx+bw>p.x-4&&bx<p.x+p.w+4&&(by<gapTop||by+bh>gapBottom))return true;
+  }
+  return false;
+}
+function update(){
+  frame++;
+  if(state==='ready'){bird.y=300;bird.rot=0;bird.flap=0;return}
+  if(state!=='playing')return;
+  bird.vy=Math.min(bird.vy+.38,8.5);bird.y+=bird.vy;
+  bird.rot=Math.min(Math.PI/2,Math.max(-.45,bird.vy*.09));
+  if(bird.flap>0)bird.flap--;
+  groundOffset=(groundOffset+3)%48;
+  pipeClock++;
+  if(pipeClock>=94){
+    pipeClock=0;
+    const gapH=174;
+    const gapY=150+Math.random()*330;
+    pipes.push({x:W+10,w:76,gapY,gapH,passed:false});
+  }
+  for(const p of pipes){
+    p.x-=3;
+    if(!p.passed&&p.x+p.w<bird.x){p.passed=true;score++;if(score>best){best=score;try{localStorage.setItem('retroFlappyBest',String(best))}catch(e){}}}
+  }
+  pipes=pipes.filter(p=>p.x+p.w>-15);
+  if(collides())state='over';
+}
+function draw(){
+  drawBackground();
+  pipes.forEach(drawPipe);
+  drawGround();
+  drawBird();
+  drawUI();
+}
+function loop(){update();draw();requestAnimationFrame(loop)}
+reset();loop();
+})();
+</script>
+</body>
+</html>
